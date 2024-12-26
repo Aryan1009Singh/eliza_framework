@@ -30,6 +30,7 @@ import { RedisClient } from "@elizaos/adapter-redis";
 import { zgPlugin } from "@elizaos/plugin-0g";
 import { bootstrapPlugin } from "@elizaos/plugin-bootstrap";
 import createGoatPlugin from "@elizaos/plugin-goat";
+import { mainCharacter } from "../mainCharacter";
 // import { intifacePlugin } from "@elizaos/plugin-intiface";
 import { DirectClient } from "@elizaos/client-direct";
 import { aptosPlugin } from "@elizaos/plugin-aptos";
@@ -203,7 +204,7 @@ export async function loadCharacters(
 
     if (loadedCharacters.length === 0) {
         elizaLogger.info("No characters found, using default character");
-        loadedCharacters.push(defaultCharacter);
+        loadedCharacters.push(mainCharacter);
     }
 
     return loadedCharacters;
@@ -245,12 +246,14 @@ export function getTokenForProvider(
             );
         case ModelProviderName.CLAUDE_VERTEX:
         case ModelProviderName.ANTHROPIC:
-            return (
-                character.settings?.secrets?.ANTHROPIC_API_KEY ||
-                character.settings?.secrets?.CLAUDE_API_KEY ||
-                settings.ANTHROPIC_API_KEY ||
-                settings.CLAUDE_API_KEY
-            );
+            const token = character.settings?.secrets?.ANTHROPIC_API_KEY ||
+                         character.settings?.secrets?.CLAUDE_API_KEY ||
+                         process.env.ANTHROPIC_API_KEY ||
+                         process.env.CLAUDE_API_KEY;
+            if (!token) {
+                throw new Error(`No API key found for ${provider}. Please set ANTHROPIC_API_KEY or CLAUDE_API_KEY in your environment or character settings.`);
+            }
+            return token;
         case ModelProviderName.REDPILL:
             return (
                 character.settings?.secrets?.REDPILL_API_KEY ||
@@ -423,7 +426,8 @@ export async function initializeClients(
             if (plugin.clients) {
                 for (const client of plugin.clients) {
                     const startedClient = await client.start(runtime);
-                    clients[client.name] = startedClient; // Assuming client has a name property
+                    const clientId = client.constructor.name.toLowerCase();
+                    clients[clientId] = startedClient;
                 }
             }
         }
@@ -699,7 +703,7 @@ const startAgents = async () => {
 
     let charactersArg = args.characters || args.character;
 
-    let characters = [defaultCharacter];
+    let characters = [mainCharacter];
 
     if (charactersArg) {
         characters = await loadCharacters(charactersArg);
